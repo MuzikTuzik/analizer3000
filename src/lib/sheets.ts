@@ -18,8 +18,21 @@ export type SheetDataset = {
   source: "sheets-api" | "csv";
 };
 
+/** Accept raw ID or a full Google Sheets URL. */
+export function normalizeSheetId(raw: string | undefined | null): string {
+  const value = (raw ?? "").trim();
+  if (!value) return DEFAULT_SHEET_ID;
+
+  const fromUrl = value.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (fromUrl?.[1]) return fromUrl[1];
+
+  // Strip accidental path leftovers like ".../edit?usp=sharing"
+  const cleaned = value.split("/")[0]?.split("?")[0]?.trim();
+  return cleaned || DEFAULT_SHEET_ID;
+}
+
 function getSheetId(): string {
-  return process.env.GOOGLE_SHEET_ID?.trim() || DEFAULT_SHEET_ID;
+  return normalizeSheetId(process.env.GOOGLE_SHEET_ID);
 }
 
 function hasApiKey(): boolean {

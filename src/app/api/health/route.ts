@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
+import { normalizeSheetId } from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const hasApiKey = Boolean(process.env.GOOGLE_API_KEY?.trim());
-  const sheetId =
-    process.env.GOOGLE_SHEET_ID?.trim() ||
-    "1nECnwPqhPggtkFMPuwTUi-JKPF8TsdoMvcmhtQfJzr8";
+  const sheetId = normalizeSheetId(process.env.GOOGLE_SHEET_ID);
 
   let sheetsApiOk: boolean | null = null;
   let sheetsApiError: string | null = null;
