@@ -26,13 +26,19 @@ npm run dev
 | Переменная | Описание |
 |---|---|
 | `GOOGLE_SHEET_ID` | ID таблицы из URL |
-| `GOOGLE_API_KEY` | Опционально. Если нет — читаем публичный CSV export |
+| `GOOGLE_API_KEY` | Рекомендуется на Vercel. Sheets API надёжнее, чем CSV export |
 
-Таблица должна быть доступна по ссылке на чтение.
+Таблица должна быть доступна по ссылке: **«Все, у кого есть ссылка» → Читатель**.
+
+### Как получить GOOGLE_API_KEY
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → создайте проект
+2. APIs & Services → Enable **Google Sheets API**
+3. Credentials → Create credentials → **API key**
+4. Вставьте ключ в Vercel → Project Settings → Environment Variables
 
 ## Деплой на Vercel
 
-1. Залейте репозиторий на GitHub
-2. Import в Vercel
-3. Добавьте `GOOGLE_SHEET_ID` (и при желании `GOOGLE_API_KEY`)
-4. Deploy
+1. Import репозитория в Vercel
+2. Добавьте env: `GOOGLE_SHEET_ID` и `GOOGLE_API_KEY`
+3. Deploy

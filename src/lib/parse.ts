@@ -139,7 +139,9 @@ export function listProducts(grid: string[][]): Product[] {
   for (let row = DATA_START_ROW; row < grid.length; row++) {
     const name = cell(grid, row, NAME_COL);
     if (!name) continue;
-    if (!/\d/.test(name)) continue;
+    // Real SKUs look like 10001, 10004-1, SP-10045…
+    if (!/^[\dA-Za-z][\w.-]{2,}/.test(name)) continue;
+    if (!/\d{3,}/.test(name)) continue;
 
     const sku = extractSku(name);
     const stock = parseNumber(cell(grid, row, STOCK_COL));
