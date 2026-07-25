@@ -31,7 +31,11 @@ export function Analyzer() {
     setError(null);
     try {
       const res = await fetch("/api/products", { cache: "no-store" });
-      const data = (await res.json()) as ProductsResponse;
+      const data = (await res.json()) as ProductsResponse & {
+        error?: string;
+        hasApiKey?: boolean;
+        source?: string;
+      };
       if (!res.ok) throw new Error(data.error || "Не удалось загрузить позиции");
       setProducts(data.products);
       setSaleColumnCount(data.saleColumnCount);

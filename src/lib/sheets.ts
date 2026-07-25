@@ -15,10 +15,15 @@ export type SheetDataset = {
   saleColumns: SaleColumn[];
   grid: string[][];
   fetchedAt: string;
+  source: "sheets-api" | "csv";
 };
 
 function getSheetId(): string {
   return process.env.GOOGLE_SHEET_ID?.trim() || DEFAULT_SHEET_ID;
+}
+
+function hasApiKey(): boolean {
+  return Boolean(process.env.GOOGLE_API_KEY?.trim());
 }
 
 function assertCsvPayload(text: string, contentType: string | null): void {
@@ -33,13 +38,12 @@ function assertCsvPayload(text: string, contentType: string | null): void {
 
   if (looksHtml) {
     throw new Error(
-      "Google вернул HTML вместо CSV. Откройте доступ к таблице «Все, у кого есть ссылка → Читатель» или задайте GOOGLE_API_KEY в Vercel.",
+      "Google вернул HTML вместо CSV (с сервера Vercel так часто бывает). Добавьте GOOGLE_API_KEY в Environment Variables и сделайте Redeploy.",
     );
   }
 }
 
 function collectCookies(res: Response): string[] {
-  // Node/undici exposes getSetCookie when available
   const headers = res.headers as Headers & { getSetCookie?: () => string[] };
   if (typeof headers.getSetCookie === "function") {
     return headers.getSetCookie().map((c) => c.split(";")[0] ?? c);
@@ -48,7 +52,6 @@ function collectCookies(res: Response): string[] {
   return single ? [single.split(";")[0] ?? single] : [];
 }
 
-/** Follow Google export redirects while forwarding Set-Cookie (needed on Vercel). */
 async function fetchWithCookies(url: string, init?: RequestInit): Promise<Response> {
   const cookies: string[] = [];
   let current = url;
@@ -86,18 +89,40 @@ async function fetchWithCookies(url: string, init?: RequestInit): Promise<Respon
   throw new Error("Too many redirects while fetching Google Sheet");
 }
 
+async function getFirstSheetTitle(
+  sheetId: string,
+  apiKey: string,
+): Promise<string> {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties.title&key=${apiKey}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(
+      `Не удалось прочитать таблицу через Sheets API (${res.status}). Проверьте GOOGLE_API_KEY и что включён Google Sheets API. ${body.slice(0, 200)}`,
+    );
+  }
+  const data = (await res.json()) as {
+    sheets?: { properties?: { title?: string } }[];
+  };
+  const title = data.sheets?.[0]?.properties?.title;
+  if (!title) throw new Error("В таблице нет листов");
+  return title;
+}
+
 async function fetchViaSheetsApi(
   sheetId: string,
   apiKey: string,
 ): Promise<string[][]> {
-  // Full used range of the first sheet (wide matrix goes beyond ZZ)
-  const range = encodeURIComponent("Лист1");
+  const title = await getFirstSheetTitle(sheetId, apiKey);
+  const range = encodeURIComponent(`'${title}'`);
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${apiKey}`;
   const res = await fetch(url, { cache: "no-store" });
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Sheets API error ${res.status}: ${body.slice(0, 300)}`);
+    throw new Error(
+      `Sheets API error ${res.status}: ${body.slice(0, 300)}. Таблица должна быть «Все, у кого есть ссылка → Читатель».`,
+    );
   }
 
   const data = (await res.json()) as { values?: string[][] };
@@ -136,29 +161,35 @@ async function fetchViaPublicCsv(sheetId: string): Promise<string[][]> {
   throw lastError ?? new Error("Не удалось загрузить таблицу");
 }
 
-async function loadGrid(): Promise<string[][]> {
+async function loadGrid(): Promise<{ grid: string[][]; source: "sheets-api" | "csv" }> {
   const sheetId = getSheetId();
   const apiKey = process.env.GOOGLE_API_KEY?.trim();
 
+  // On Vercel CSV export usually fails; if key exists, use API only and surface real errors.
   if (apiKey) {
-    try {
-      return await fetchViaSheetsApi(sheetId, apiKey);
-    } catch (err) {
-      console.warn("Sheets API failed, falling back to CSV export", err);
-    }
+    const grid = await fetchViaSheetsApi(sheetId, apiKey);
+    return { grid, source: "sheets-api" };
   }
 
-  return fetchViaPublicCsv(sheetId);
+  try {
+    const grid = await fetchViaPublicCsv(sheetId);
+    return { grid, source: "csv" };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `${message} Сейчас GOOGLE_API_KEY не задан в Vercel — добавьте его в Environment Variables (Production) и нажмите Redeploy.`,
+    );
+  }
 }
 
 async function loadDatasetUncached(): Promise<SheetDataset> {
-  const grid = await loadGrid();
+  const { grid, source } = await loadGrid();
   const saleColumns = detectSaleColumns(grid);
   const products = listProducts(grid);
 
   if (products.length < 10) {
     throw new Error(
-      `Найдено слишком мало позиций (${products.length}). Проверьте доступ к таблице или GOOGLE_API_KEY.`,
+      `Найдено слишком мало позиций (${products.length}). Источник: ${source}. Проверьте доступ к таблице.`,
     );
   }
 
@@ -167,10 +198,11 @@ async function loadDatasetUncached(): Promise<SheetDataset> {
     saleColumns,
     products,
     fetchedAt: new Date().toISOString(),
+    source,
   };
 }
 
-export const getDataset = unstable_cache(loadDatasetUncached, ["sheet-dataset-v2"], {
+export const getDataset = unstable_cache(loadDatasetUncached, ["sheet-dataset-v3"], {
   revalidate: 60,
   tags: ["sheet"],
 });
@@ -179,12 +211,16 @@ export async function getProducts(): Promise<{
   products: Omit<Product, "rowIndex">[];
   saleColumnCount: number;
   fetchedAt: string;
+  source: "sheets-api" | "csv";
+  hasApiKey: boolean;
 }> {
   const ds = await getDataset();
   return {
     products: ds.products.map(({ rowIndex: _r, ...p }) => p),
     saleColumnCount: ds.saleColumns.length,
     fetchedAt: ds.fetchedAt,
+    source: ds.source,
+    hasApiKey: hasApiKey(),
   };
 }
 
