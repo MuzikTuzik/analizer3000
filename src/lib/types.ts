@@ -7,8 +7,12 @@ export type Product = {
 };
 
 export type QuantityBucket = {
+  /** Pack size / price tier: 25, 50 or 100 */
   quantity: number;
+  /** How many orders used this pack size */
   orderCount: number;
+  /** How many packs sold (qty / packSize) */
+  packCount: number;
 };
 
 export type ClientBreakdown = {

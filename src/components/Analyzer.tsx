@@ -10,9 +10,12 @@ type ProductsResponse = {
   error?: string;
 };
 
-function formatQtyBreakdown(buckets: { quantity: number; orderCount: number }[]) {
+function formatQtyBreakdown(
+  buckets: { quantity: number; orderCount: number; packCount: number }[],
+) {
   if (!buckets.length) return "—";
-  return buckets.map((b) => `${b.quantity}×${b.orderCount}`).join(", ");
+  // e.g. 100×22 = 22 packs of 100 (order 400 + 500 + …)
+  return buckets.map((b) => `${b.quantity}×${b.packCount}`).join(", ");
 }
 
 export function Analyzer() {
@@ -191,7 +194,9 @@ export function Analyzer() {
               </div>
 
               <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
-                <h3 className="mb-3 text-base font-semibold">По сколько брали</h3>
+                <h3 className="mb-3 text-base font-semibold">
+                  По сколько брали (25 / 50 / 100)
+                </h3>
                 {analysis.byQuantity.length === 0 ? (
                   <p className="text-[var(--muted)]">Продаж нет</p>
                 ) : (
@@ -199,13 +204,16 @@ export function Analyzer() {
                     {analysis.byQuantity.map((b) => (
                       <div
                         key={b.quantity}
-                        className="min-w-[6.5rem] rounded-lg bg-[var(--accent-soft)] px-3 py-2.5"
+                        className="min-w-[7.5rem] rounded-lg bg-[var(--accent-soft)] px-3 py-2.5"
                       >
                         <div className="font-mono text-xl font-medium tabular-nums">
                           {b.quantity}
                         </div>
                         <div className="text-sm text-[var(--muted)]">
                           {b.orderCount} {pluralOrders(b.orderCount)}
+                        </div>
+                        <div className="mt-0.5 font-mono text-xs text-[var(--muted)]">
+                          {b.packCount} уп. · {b.packCount * b.quantity} шт.
                         </div>
                       </div>
                     ))}

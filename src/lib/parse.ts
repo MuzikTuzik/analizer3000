@@ -158,10 +158,38 @@ export function listProducts(grid: string[][]): Product[] {
   return products;
 }
 
-function toBuckets(counts: Map<number, number>): QuantityBucket[] {
-  return [...counts.entries()]
-    .map(([quantity, orderCount]) => ({ quantity, orderCount }))
-    .sort((a, b) => a.quantity - b.quantity);
+const PACK_SIZES = [100, 50, 25] as const;
+
+/** Largest pack size (25/50/100) that evenly divides the order qty. */
+export function resolvePackSize(qty: number): 25 | 50 | 100 | null {
+  if (!Number.isFinite(qty) || qty <= 0) return null;
+  for (const pack of PACK_SIZES) {
+    if (qty % pack === 0) return pack;
+  }
+  return null;
+}
+
+type PackStats = { orderCount: number; packCount: number };
+
+function toBuckets(stats: Map<number, PackStats>): QuantityBucket[] {
+  // Always show tiers in order 25 → 50 → 100 when present
+  return [25, 50, 100]
+    .filter((q) => stats.has(q))
+    .map((quantity) => {
+      const s = stats.get(quantity)!;
+      return {
+        quantity,
+        orderCount: s.orderCount,
+        packCount: s.packCount,
+      };
+    });
+}
+
+function bumpPack(stats: Map<number, PackStats>, pack: number, packs: number) {
+  const cur = stats.get(pack) ?? { orderCount: 0, packCount: 0 };
+  cur.orderCount += 1;
+  cur.packCount += packs;
+  stats.set(pack, cur);
 }
 
 export function analyzeProduct(
@@ -169,14 +197,14 @@ export function analyzeProduct(
   saleColumns: SaleColumn[],
   product: Product,
 ): ProductAnalysis {
-  const byQuantity = new Map<number, number>();
+  const byQuantity = new Map<number, PackStats>();
   const clientMap = new Map<
     string,
     {
       client: string;
       orderCount: number;
       totalQty: number;
-      byQuantity: Map<number, number>;
+      byQuantity: Map<number, PackStats>;
       orders: ClientBreakdown["orders"];
     }
   >();
@@ -190,7 +218,11 @@ export function analyzeProduct(
 
     orderCount += 1;
     totalQty += qty;
-    byQuantity.set(qty, (byQuantity.get(qty) ?? 0) + 1);
+
+    const pack = resolvePackSize(qty);
+    if (pack) {
+      bumpPack(byQuantity, pack, qty / pack);
+    }
 
     // Named buyers aggregate; anonymous order columns stay separate
     const isAnonymous = col.client.startsWith("Не указан");
@@ -200,13 +232,15 @@ export function analyzeProduct(
       client: col.client,
       orderCount: 0,
       totalQty: 0,
-      byQuantity: new Map<number, number>(),
+      byQuantity: new Map<number, PackStats>(),
       orders: [],
     };
 
     existing.orderCount += 1;
     existing.totalQty += qty;
-    existing.byQuantity.set(qty, (existing.byQuantity.get(qty) ?? 0) + 1);
+    if (pack) {
+      bumpPack(existing.byQuantity, pack, qty / pack);
+    }
     existing.orders.push({
       date: col.date,
       city: col.city,
