@@ -10,7 +10,6 @@
   --accent: #0f5c4c;
   --accent-soft: #d7ebe4;
   --warn: #8a4b12;
-  --shadow: 0 12px 40px rgba(28, 25, 21, 0.08);
 }
 
 @theme inline {
@@ -20,15 +19,18 @@
   --font-mono: var(--font-mono);
 }
 
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
 body {
   margin: 0;
   min-height: 100%;
   color: var(--ink);
-  background:
-    radial-gradient(1200px 500px at 10% -10%, #fff8e8 0%, transparent 55%),
-    radial-gradient(900px 420px at 90% 0%, #dceee8 0%, transparent 50%),
-    linear-gradient(180deg, var(--bg) 0%, var(--bg-accent) 100%);
-  font-family: var(--font-display), Georgia, serif;
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-accent) 100%);
+  font-family: var(--font-display), "Segoe UI", sans-serif;
 }
 
 * {
@@ -38,4 +40,13 @@ body {
 button,
 input {
   font: inherit;
+}
+
+table {
+  border-spacing: 0;
+}
+
+th,
+td {
+  vertical-align: middle;
 }
