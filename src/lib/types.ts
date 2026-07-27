@@ -44,3 +44,9 @@ export type SaleColumn = {
   city: string;
   payment: string;
 };
+
+export type TopPackRow = {
+  sku: string;
+  pack25: number;
+  pack50: number;
+};

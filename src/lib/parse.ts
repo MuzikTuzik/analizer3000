@@ -4,6 +4,7 @@ import type {
   ProductAnalysis,
   QuantityBucket,
   SaleColumn,
+  TopPackRow,
 } from "./types";
 
 const HEADER_ROW = 6; // 0-based: row 7 in sheet
@@ -320,4 +321,41 @@ export function findProduct(
     products.find((p) => p.sku.toLowerCase().startsWith(q)) ||
     products.find((p) => p.label.toLowerCase().includes(q))
   );
+}
+
+/** Top products by pack-25 sales; includes pack-50 counts for the same SKUs. */
+export function topProductsByPack25(
+  grid: string[][],
+  saleColumns: SaleColumn[],
+  products: Product[],
+  limit = 150,
+): TopPackRow[] {
+  const rows: TopPackRow[] = [];
+
+  for (const product of products) {
+    let pack25 = 0;
+    let pack50 = 0;
+
+    for (const col of saleColumns) {
+      const qty = parseNumber(cell(grid, product.rowIndex, col.colIndex));
+      if (qty === null || qty === 0) continue;
+
+      for (const part of decomposePacks(qty)) {
+        if (part.pack === 25) pack25 += part.count;
+        if (part.pack === 50) pack50 += part.count;
+      }
+    }
+
+    if (pack25 <= 0) continue;
+    rows.push({ sku: product.sku, pack25, pack50 });
+  }
+
+  return rows
+    .sort(
+      (a, b) =>
+        b.pack25 - a.pack25 ||
+        b.pack50 - a.pack50 ||
+        a.sku.localeCompare(b.sku, "ru"),
+    )
+    .slice(0, limit);
 }

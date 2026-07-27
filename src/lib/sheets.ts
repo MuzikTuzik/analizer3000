@@ -5,8 +5,9 @@ import {
   detectSaleColumns,
   findProduct,
   listProducts,
+  topProductsByPack25,
 } from "./parse";
-import type { Product, ProductAnalysis, SaleColumn } from "./types";
+import type { Product, ProductAnalysis, SaleColumn, TopPackRow } from "./types";
 
 const DEFAULT_SHEET_ID = "1nECnwPqhPggtkFMPuwTUi-JKPF8TsdoMvcmhtQfJzr8";
 
@@ -242,4 +243,9 @@ export async function getAnalysis(query: string): Promise<ProductAnalysis | null
   const product = findProduct(ds.products, query);
   if (!product) return null;
   return analyzeProduct(ds.grid, ds.saleColumns, product);
+}
+
+export async function getTopPack25Rows(limit = 150): Promise<TopPackRow[]> {
+  const ds = await getDataset();
+  return topProductsByPack25(ds.grid, ds.saleColumns, ds.products, limit);
 }

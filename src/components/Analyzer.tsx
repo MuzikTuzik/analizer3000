@@ -27,6 +27,7 @@ export function Analyzer() {
   const [analysis, setAnalysis] = useState<ProductAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   async function loadProducts() {
@@ -97,19 +98,56 @@ export function Analyzer() {
     }
   }
 
+  async function exportTop25Excel() {
+    setExporting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/export/top25", { cache: "no-store" });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(data?.error || "Не удалось создать Excel");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `top150-po25-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка выгрузки Excel");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
-      <header className="mb-6 flex items-center justify-between gap-4">
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
           Анализатор продаж крепежа
         </h1>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          className="shrink-0 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-medium text-white transition hover:opacity-90"
-        >
-          Обновить
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void exportTop25Excel()}
+            disabled={exporting || loadingProducts}
+            className="shrink-0 rounded-lg border border-[var(--accent)] bg-white px-3.5 py-2 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-soft)] disabled:opacity-50"
+          >
+            {exporting ? "Создаём Excel…" : "Excel: топ 150 по 25"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="shrink-0 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-medium text-white transition hover:opacity-90"
+          >
+            Обновить
+          </button>
+        </div>
       </header>
 
       <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
