@@ -7,7 +7,7 @@ export type Product = {
 };
 
 export type QuantityBucket = {
-  /** Pack size / price tier: 25, 50 or 100 */
+  /** Pack size / price tier: 25, 50, 75 or 100 */
   quantity: number;
   /** How many orders used this pack size */
   orderCount: number;

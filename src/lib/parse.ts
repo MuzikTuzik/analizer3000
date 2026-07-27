@@ -158,22 +158,51 @@ export function listProducts(grid: string[][]): Product[] {
   return products;
 }
 
-const PACK_SIZES = [100, 50, 25] as const;
-
-/** Largest pack size (25/50/100) that evenly divides the order qty. */
-export function resolvePackSize(qty: number): 25 | 50 | 100 | null {
-  if (!Number.isFinite(qty) || qty <= 0) return null;
-  for (const pack of PACK_SIZES) {
-    if (qty % pack === 0) return pack;
-  }
-  return null;
-}
-
 type PackStats = { orderCount: number; packCount: number };
 
+/**
+ * Split order qty into pack tiers:
+ * 1) as many 100 as possible
+ * 2) remainder 75 → one 75 (own price, not 50+25)
+ * 3) else 50, then 25s
+ *
+ * 1675 → 16×100 + 1×75
+ * 625  → 6×100 + 1×25
+ * 150  → 1×100 + 1×50
+ */
+export function decomposePacks(qty: number): { pack: number; count: number }[] {
+  if (!Number.isFinite(qty) || qty <= 0) return [];
+
+  let rem = Math.round(qty);
+  const parts: { pack: number; count: number }[] = [];
+
+  const n100 = Math.floor(rem / 100);
+  if (n100 > 0) {
+    parts.push({ pack: 100, count: n100 });
+    rem %= 100;
+  }
+
+  // 75 is its own tier — only when remainder is exactly 75
+  if (rem === 75) {
+    parts.push({ pack: 75, count: 1 });
+    rem = 0;
+  }
+
+  if (rem >= 50) {
+    parts.push({ pack: 50, count: 1 });
+    rem -= 50;
+  }
+
+  const n25 = Math.floor(rem / 25);
+  if (n25 > 0) {
+    parts.push({ pack: 25, count: n25 });
+  }
+
+  return parts;
+}
+
 function toBuckets(stats: Map<number, PackStats>): QuantityBucket[] {
-  // Always show tiers in order 25 → 50 → 100 when present
-  return [25, 50, 100]
+  return [25, 50, 75, 100]
     .filter((q) => stats.has(q))
     .map((quantity) => {
       const s = stats.get(quantity)!;
@@ -190,6 +219,15 @@ function bumpPack(stats: Map<number, PackStats>, pack: number, packs: number) {
   cur.orderCount += 1;
   cur.packCount += packs;
   stats.set(pack, cur);
+}
+
+function applyPackParts(
+  stats: Map<number, PackStats>,
+  parts: { pack: number; count: number }[],
+) {
+  for (const part of parts) {
+    bumpPack(stats, part.pack, part.count);
+  }
 }
 
 export function analyzeProduct(
@@ -219,10 +257,8 @@ export function analyzeProduct(
     orderCount += 1;
     totalQty += qty;
 
-    const pack = resolvePackSize(qty);
-    if (pack) {
-      bumpPack(byQuantity, pack, qty / pack);
-    }
+    const parts = decomposePacks(qty);
+    applyPackParts(byQuantity, parts);
 
     // Named buyers aggregate; anonymous order columns stay separate
     const isAnonymous = col.client.startsWith("Не указан");
@@ -238,9 +274,7 @@ export function analyzeProduct(
 
     existing.orderCount += 1;
     existing.totalQty += qty;
-    if (pack) {
-      bumpPack(existing.byQuantity, pack, qty / pack);
-    }
+    applyPackParts(existing.byQuantity, parts);
     existing.orders.push({
       date: col.date,
       city: col.city,

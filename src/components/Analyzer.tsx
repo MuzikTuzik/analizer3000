@@ -195,7 +195,7 @@ export function Analyzer() {
 
               <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
                 <h3 className="mb-3 text-base font-semibold">
-                  По сколько брали (25 / 50 / 100)
+                  По сколько брали (25 / 50 / 75 / 100)
                 </h3>
                 {analysis.byQuantity.length === 0 ? (
                   <p className="text-[var(--muted)]">Продаж нет</p>
