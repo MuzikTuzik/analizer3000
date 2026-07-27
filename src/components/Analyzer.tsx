@@ -234,9 +234,29 @@ export function Analyzer() {
               </div>
 
               <div className="grid gap-3 sm:grid-cols-3">
-                <Metric label="Заказов" value={String(analysis.orderCount)} />
-                <Metric label="Клиентов" value={String(analysis.clientCount)} />
-                <Metric label="Всего шт." value={String(analysis.totalQty)} />
+                <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface)]">
+                  <div className="border-r border-[var(--line)] px-4 py-3">
+                    <div className="text-sm text-[var(--muted)]">Заказов</div>
+                    <div className="mt-1 font-mono text-2xl font-semibold tabular-nums tracking-tight">
+                      {analysis.orderCount}
+                    </div>
+                  </div>
+                  <div className="px-4 py-3">
+                    <div className="text-sm text-[var(--muted)]">Клиентов</div>
+                    <div className="mt-1 font-mono text-2xl font-semibold tabular-nums tracking-tight">
+                      {analysis.clientCount}
+                    </div>
+                  </div>
+                </div>
+                <Metric label="Продано" value={String(analysis.totalQty)} />
+                <Metric
+                  label="Остаток"
+                  value={
+                    analysis.product.stock != null
+                      ? String(analysis.product.stock)
+                      : "—"
+                  }
+                />
               </div>
 
               <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
