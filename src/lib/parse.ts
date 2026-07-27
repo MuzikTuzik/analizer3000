@@ -323,12 +323,10 @@ export function findProduct(
   );
 }
 
-/** Top products by pack-25 sales; includes pack-50 counts for the same SKUs. */
-export function topProductsByPack25(
+function collectPack25And50(
   grid: string[][],
   saleColumns: SaleColumn[],
   products: Product[],
-  limit = 150,
 ): TopPackRow[] {
   const rows: TopPackRow[] = [];
 
@@ -346,15 +344,44 @@ export function topProductsByPack25(
       }
     }
 
-    if (pack25 <= 0) continue;
+    if (pack25 <= 0 && pack50 <= 0) continue;
     rows.push({ sku: product.sku, pack25, pack50 });
   }
 
-  return rows
+  return rows;
+}
+
+/** Top products by pack-25 sales; includes pack-50 counts for the same SKUs. */
+export function topProductsByPack25(
+  grid: string[][],
+  saleColumns: SaleColumn[],
+  products: Product[],
+  limit = 150,
+): TopPackRow[] {
+  return collectPack25And50(grid, saleColumns, products)
+    .filter((r) => r.pack25 > 0)
     .sort(
       (a, b) =>
         b.pack25 - a.pack25 ||
         b.pack50 - a.pack50 ||
+        a.sku.localeCompare(b.sku, "ru"),
+    )
+    .slice(0, limit);
+}
+
+/** Top products by pack-50 sales; includes pack-25 counts for the same SKUs. */
+export function topProductsByPack50(
+  grid: string[][],
+  saleColumns: SaleColumn[],
+  products: Product[],
+  limit = 150,
+): TopPackRow[] {
+  return collectPack25And50(grid, saleColumns, products)
+    .filter((r) => r.pack50 > 0)
+    .sort(
+      (a, b) =>
+        b.pack50 - a.pack50 ||
+        b.pack25 - a.pack25 ||
         a.sku.localeCompare(b.sku, "ru"),
     )
     .slice(0, limit);

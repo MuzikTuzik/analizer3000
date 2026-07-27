@@ -27,7 +27,7 @@ export function Analyzer() {
   const [analysis, setAnalysis] = useState<ProductAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadingProducts, setLoadingProducts] = useState(true);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<"25" | "50" | null>(null);
   const [isPending, startTransition] = useTransition();
 
   async function loadProducts() {
@@ -98,11 +98,11 @@ export function Analyzer() {
     }
   }
 
-  async function exportTop25Excel() {
-    setExporting(true);
+  async function exportTopExcel(kind: "25" | "50") {
+    setExporting(kind);
     setError(null);
     try {
-      const res = await fetch("/api/export/top25", { cache: "no-store" });
+      const res = await fetch(`/api/export/top${kind}`, { cache: "no-store" });
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as {
           error?: string;
@@ -113,7 +113,7 @@ export function Analyzer() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `top150-po25-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.download = `top150-po${kind}-${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -121,7 +121,7 @@ export function Analyzer() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка выгрузки Excel");
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   }
 
@@ -134,11 +134,19 @@ export function Analyzer() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => void exportTop25Excel()}
-            disabled={exporting || loadingProducts}
+            onClick={() => void exportTopExcel("25")}
+            disabled={exporting !== null || loadingProducts}
             className="shrink-0 rounded-lg border border-[var(--accent)] bg-white px-3.5 py-2 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-soft)] disabled:opacity-50"
           >
-            {exporting ? "Создаём Excel…" : "Excel: топ 150 по 25"}
+            {exporting === "25" ? "Создаём Excel…" : "Excel: топ 150 по 25"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void exportTopExcel("50")}
+            disabled={exporting !== null || loadingProducts}
+            className="shrink-0 rounded-lg border border-[var(--accent)] bg-white px-3.5 py-2 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-soft)] disabled:opacity-50"
+          >
+            {exporting === "50" ? "Создаём Excel…" : "Excel: топ 150 по 50"}
           </button>
           <button
             type="button"

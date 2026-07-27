@@ -6,6 +6,7 @@ import {
   findProduct,
   listProducts,
   topProductsByPack25,
+  topProductsByPack50,
 } from "./parse";
 import type { Product, ProductAnalysis, SaleColumn, TopPackRow } from "./types";
 
@@ -248,4 +249,9 @@ export async function getAnalysis(query: string): Promise<ProductAnalysis | null
 export async function getTopPack25Rows(limit = 150): Promise<TopPackRow[]> {
   const ds = await getDataset();
   return topProductsByPack25(ds.grid, ds.saleColumns, ds.products, limit);
+}
+
+export async function getTopPack50Rows(limit = 150): Promise<TopPackRow[]> {
+  const ds = await getDataset();
+  return topProductsByPack50(ds.grid, ds.saleColumns, ds.products, limit);
 }
