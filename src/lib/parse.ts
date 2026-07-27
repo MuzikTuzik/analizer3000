@@ -203,8 +203,7 @@ export function decomposePacks(qty: number): { pack: number; count: number }[] {
 }
 
 function toBuckets(stats: Map<number, PackStats>): QuantityBucket[] {
-  // UI shows only 25 and 50 pack tiers
-  return [25, 50]
+  return [25, 50, 75, 100]
     .filter((q) => stats.has(q))
     .map((quantity) => {
       const s = stats.get(quantity)!;
