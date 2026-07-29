@@ -10,12 +10,12 @@ type ProductsResponse = {
   error?: string;
 };
 
-function formatQtyBreakdown(
-  buckets: { quantity: number; orderCount: number; packCount: number }[],
-) {
-  if (!buckets.length) return "—";
-  // e.g. 100×22 = 22 packs of 100 (order 400 + 500 + …)
-  return buckets.map((b) => `${b.quantity}×${b.packCount}`).join(", ");
+function formatOrderQuantities(orders: { quantity: number }[]) {
+  if (!orders.length) return "—";
+  return orders
+    .map((o) => o.quantity)
+    .sort((a, b) => a - b)
+    .join(", ");
 }
 
 export function Analyzer() {
@@ -261,7 +261,7 @@ export function Analyzer() {
 
               <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
                 <h3 className="mb-3 text-base font-semibold">
-                  По сколько брали (25 / 50 / 75 / 100)
+                  По сколько брали (25 / 50)
                 </h3>
                 {analysis.byQuantity.length === 0 ? (
                   <p className="text-[var(--muted)]">Продаж нет</p>
@@ -315,7 +315,7 @@ export function Analyzer() {
                             {c.totalQty}
                           </td>
                           <td className="px-4 py-2.5 font-mono text-[var(--muted)]">
-                            {formatQtyBreakdown(c.byQuantity)}
+                            {formatOrderQuantities(c.orders)}
                           </td>
                         </tr>
                       ))}
