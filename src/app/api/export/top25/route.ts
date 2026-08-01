@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { NextRequest, NextResponse } from "next/server";
+import { parseLimitParam } from "@/lib/limit";
 import { getTopPack25Rows } from "@/lib/sheets";
 import { parseYearsParam } from "@/lib/years";
 
@@ -8,12 +9,13 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     const years = parseYearsParam(request.nextUrl.searchParams.get("years"));
-    const rows = await getTopPack25Rows(150, years);
+    const limit = parseLimitParam(request.nextUrl.searchParams.get("limit"));
+    const rows = await getTopPack25Rows(limit, years);
     const yearLabel = years?.length ? years.join("-") : "all";
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "analizer3000";
-    const sheet = workbook.addWorksheet("Топ 150 по 25");
+    const sheet = workbook.addWorksheet(`Топ ${limit} по 25`);
 
     sheet.columns = [
       { header: "Артикул", key: "sku", width: 18 },
@@ -31,7 +33,7 @@ export async function GET(request: NextRequest) {
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
-    const filename = `top150-po25-${yearLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const filename = `top${limit}-po25-${yearLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
     return new NextResponse(buffer, {
       status: 200,

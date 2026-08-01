@@ -31,9 +31,16 @@ export function Analyzer() {
   const [error, setError] = useState<string | null>(null);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [exporting, setExporting] = useState<"25" | "50" | null>(null);
+  const [topLimit, setTopLimit] = useState("150");
   const [isPending, startTransition] = useTransition();
 
   const yearsParam = useMemo(() => yearsQuery(selectedYears), [selectedYears]);
+
+  const topLimitNum = useMemo(() => {
+    const n = Number(topLimit.trim());
+    if (!Number.isFinite(n)) return 150;
+    return Math.min(5000, Math.max(1, Math.floor(n)));
+  }, [topLimit]);
 
   async function loadYears() {
     const res = await fetch("/api/years", { cache: "no-store" });
@@ -172,11 +179,14 @@ export function Analyzer() {
     setExporting(kind);
     setError(null);
     try {
-      const qs = yearsParam;
-      const res = await fetch(
-        `/api/export/top${kind}${qs ? `?${qs}` : ""}`,
-        { cache: "no-store" },
-      );
+      const params = new URLSearchParams();
+      if (yearsParam.startsWith("years=")) {
+        params.set("years", selectedYears.join(","));
+      }
+      params.set("limit", String(topLimitNum));
+      const res = await fetch(`/api/export/top${kind}?${params.toString()}`, {
+        cache: "no-store",
+      });
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as {
           error?: string;
@@ -190,7 +200,7 @@ export function Analyzer() {
       const yearLabel = selectedYears.length
         ? selectedYears.join("-")
         : "all";
-      a.download = `top150-po${kind}-${yearLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.download = `top${topLimitNum}-po${kind}-${yearLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -208,14 +218,25 @@ export function Analyzer() {
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
           Анализатор продаж крепежа
         </h1>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-sm text-[var(--muted)]">
+            Топ
+            <input
+              type="number"
+              min={1}
+              max={5000}
+              value={topLimit}
+              onChange={(e) => setTopLimit(e.target.value)}
+              className="w-20 rounded-lg border border-[var(--line)] bg-white px-2 py-1.5 font-mono text-sm text-[var(--ink)] outline-none ring-[var(--accent)] focus:ring-2"
+            />
+          </label>
           <button
             type="button"
             onClick={() => void exportTopExcel("25")}
             disabled={exporting !== null || loadingProducts || !selectedYears.length}
             className="shrink-0 rounded-lg border border-[var(--accent)] bg-white px-3.5 py-2 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-soft)] disabled:opacity-50"
           >
-            {exporting === "25" ? "Создаём Excel…" : "Excel: топ 150 по 25"}
+            {exporting === "25" ? "Создаём Excel…" : `Excel: топ ${topLimitNum} по 25`}
           </button>
           <button
             type="button"
@@ -223,7 +244,7 @@ export function Analyzer() {
             disabled={exporting !== null || loadingProducts || !selectedYears.length}
             className="shrink-0 rounded-lg border border-[var(--accent)] bg-white px-3.5 py-2 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-soft)] disabled:opacity-50"
           >
-            {exporting === "50" ? "Создаём Excel…" : "Excel: топ 150 по 50"}
+            {exporting === "50" ? "Создаём Excel…" : `Excel: топ ${topLimitNum} по 50`}
           </button>
           <button
             type="button"
