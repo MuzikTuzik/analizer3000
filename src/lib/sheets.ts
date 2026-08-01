@@ -5,18 +5,21 @@ import {
   detectSaleColumns,
   findProduct,
   listProducts,
+  mergeAnalyses,
+  mergeTopPackRows,
   topProductsByPack25,
   topProductsByPack50,
 } from "./parse";
 import type { Product, ProductAnalysis, SaleColumn, TopPackRow } from "./types";
+import { isYearSheetTitle } from "./years";
 
 const DEFAULT_SHEET_ID = "1nECnwPqhPggtkFMPuwTUi-JKPF8TsdoMvcmhtQfJzr8";
 
-export type SheetDataset = {
+export type YearDataset = {
+  year: string;
   products: Product[];
   saleColumns: SaleColumn[];
   grid: string[][];
-  fetchedAt: string;
   source: "sheets-api" | "csv";
 };
 
@@ -28,7 +31,6 @@ export function normalizeSheetId(raw: string | undefined | null): string {
   const fromUrl = value.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   if (fromUrl?.[1]) return fromUrl[1];
 
-  // Strip accidental path leftovers like ".../edit?usp=sharing"
   const cleaned = value.split("/")[0]?.split("?")[0]?.trim();
   return cleaned || DEFAULT_SHEET_ID;
 }
@@ -104,31 +106,31 @@ async function fetchWithCookies(url: string, init?: RequestInit): Promise<Respon
   throw new Error("Too many redirects while fetching Google Sheet");
 }
 
-async function getFirstSheetTitle(
+async function listSheetTitlesViaApi(
   sheetId: string,
   apiKey: string,
-): Promise<string> {
+): Promise<string[]> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties.title&key=${apiKey}`;
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
     const body = await res.text();
     throw new Error(
-      `Не удалось прочитать таблицу через Sheets API (${res.status}). Проверьте GOOGLE_API_KEY и что включён Google Sheets API. ${body.slice(0, 200)}`,
+      `Не удалось прочитать список листов (${res.status}). ${body.slice(0, 200)}`,
     );
   }
   const data = (await res.json()) as {
     sheets?: { properties?: { title?: string } }[];
   };
-  const title = data.sheets?.[0]?.properties?.title;
-  if (!title) throw new Error("В таблице нет листов");
-  return title;
+  return (data.sheets ?? [])
+    .map((s) => s.properties?.title?.trim() ?? "")
+    .filter(Boolean);
 }
 
-async function fetchViaSheetsApi(
+async function fetchSheetViaApi(
   sheetId: string,
   apiKey: string,
+  title: string,
 ): Promise<string[][]> {
-  const title = await getFirstSheetTitle(sheetId, apiKey);
   const range = encodeURIComponent(`'${title}'`);
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${apiKey}`;
   const res = await fetch(url, { cache: "no-store" });
@@ -136,7 +138,7 @@ async function fetchViaSheetsApi(
   if (!res.ok) {
     const body = await res.text();
     throw new Error(
-      `Sheets API error ${res.status}: ${body.slice(0, 300)}. Таблица должна быть «Все, у кого есть ссылка → Читатель».`,
+      `Sheets API error ${res.status} (${title}): ${body.slice(0, 300)}`,
     );
   }
 
@@ -144,114 +146,212 @@ async function fetchViaSheetsApi(
   return data.values ?? [];
 }
 
-async function fetchViaPublicCsv(sheetId: string): Promise<string[][]> {
+async function fetchSheetViaCsv(
+  sheetId: string,
+  title: string,
+): Promise<string[][]> {
   const urls = [
-    `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=0`,
-    `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=0`,
+    `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(title)}`,
+    `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&sheet=${encodeURIComponent(title)}`,
   ];
 
   let lastError: Error | null = null;
-
   for (const url of urls) {
     try {
       const res = await fetchWithCookies(url);
-      if (!res.ok) {
-        throw new Error(`CSV export failed: ${res.status}`);
-      }
-
+      if (!res.ok) throw new Error(`CSV export failed: ${res.status}`);
       const buffer = await res.arrayBuffer();
       const text = new TextDecoder("utf-8").decode(buffer);
       assertCsvPayload(text, res.headers.get("content-type"));
-
       const grid = parseCsv(text);
       if (grid.length < 8) {
-        throw new Error("CSV слишком короткий — похоже, таблица не загрузилась");
+        throw new Error(`CSV листа ${title} слишком короткий`);
       }
       return grid;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
     }
   }
-
-  throw lastError ?? new Error("Не удалось загрузить таблицу");
+  throw lastError ?? new Error(`Не удалось загрузить лист ${title}`);
 }
 
-async function loadGrid(): Promise<{ grid: string[][]; source: "sheets-api" | "csv" }> {
+async function listYearTitlesUncached(): Promise<string[]> {
   const sheetId = getSheetId();
   const apiKey = process.env.GOOGLE_API_KEY?.trim();
 
-  // On Vercel CSV export usually fails; if key exists, use API only and surface real errors.
   if (apiKey) {
-    const grid = await fetchViaSheetsApi(sheetId, apiKey);
-    return { grid, source: "sheets-api" };
+    const titles = await listSheetTitlesViaApi(sheetId, apiKey);
+    const years = titles.filter(isYearSheetTitle).sort((a, b) => b.localeCompare(a));
+    if (!years.length) {
+      throw new Error(
+        "Не найдены листы-годы (ожидаются имена вида 2023, 2024, 2025, 2026).",
+      );
+    }
+    return years;
   }
 
-  try {
-    const grid = await fetchViaPublicCsv(sheetId);
-    return { grid, source: "csv" };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+  // Without API key: probe common year range via CSV
+  const found: string[] = [];
+  const current = new Date().getFullYear();
+  for (let y = current; y >= current - 10; y--) {
+    const title = String(y);
+    try {
+      await fetchSheetViaCsv(sheetId, title);
+      found.push(title);
+    } catch {
+      // skip missing
+    }
+  }
+  if (!found.length) {
     throw new Error(
-      `${message} Сейчас GOOGLE_API_KEY не задан в Vercel — добавьте его в Environment Variables (Production) и нажмите Redeploy.`,
+      "Не найдены листы-годы. Задайте GOOGLE_API_KEY или назовите листы 2023, 2024…",
     );
   }
+  return found.sort((a, b) => b.localeCompare(a));
 }
 
-async function loadDatasetUncached(): Promise<SheetDataset> {
-  const { grid, source } = await loadGrid();
+export const listYearTitles = unstable_cache(
+  listYearTitlesUncached,
+  ["year-titles-v1"],
+  { revalidate: 60, tags: ["sheet"] },
+);
+
+async function loadYearDatasetUncached(year: string): Promise<YearDataset> {
+  const sheetId = getSheetId();
+  const apiKey = process.env.GOOGLE_API_KEY?.trim();
+
+  let grid: string[][];
+  let source: "sheets-api" | "csv";
+
+  if (apiKey) {
+    grid = await fetchSheetViaApi(sheetId, apiKey, year);
+    source = "sheets-api";
+  } else {
+    grid = await fetchSheetViaCsv(sheetId, year);
+    source = "csv";
+  }
+
   const saleColumns = detectSaleColumns(grid);
   const products = listProducts(grid);
 
-  if (products.length < 10) {
+  if (products.length < 5) {
     throw new Error(
-      `Найдено слишком мало позиций (${products.length}). Источник: ${source}. Проверьте доступ к таблице.`,
+      `В листе ${year} слишком мало позиций (${products.length}). Проверьте структуру.`,
     );
   }
 
+  return { year, grid, saleColumns, products, source };
+}
+
+export const getYearDataset = unstable_cache(
+  loadYearDatasetUncached,
+  ["year-dataset-v1"],
+  { revalidate: 60, tags: ["sheet"] },
+);
+
+async function resolveYears(requested: string[] | null): Promise<string[]> {
+  const available = await listYearTitles();
+  if (!requested?.length) return available;
+
+  const set = new Set(available);
+  const picked = requested.filter((y) => set.has(y));
+  if (!picked.length) {
+    throw new Error(
+      `Нет выбранных годов среди доступных: ${available.join(", ")}`,
+    );
+  }
+  return picked.sort((a, b) => b.localeCompare(a));
+}
+
+export async function getAvailableYears(): Promise<{
+  years: string[];
+  fetchedAt: string;
+  hasApiKey: boolean;
+}> {
+  const years = await listYearTitles();
   return {
-    grid,
-    saleColumns,
-    products,
+    years,
     fetchedAt: new Date().toISOString(),
-    source,
+    hasApiKey: hasApiKey(),
   };
 }
 
-export const getDataset = unstable_cache(loadDatasetUncached, ["sheet-dataset-v3"], {
-  revalidate: 60,
-  tags: ["sheet"],
-});
-
-export async function getProducts(): Promise<{
+export async function getProducts(yearsParam: string[] | null = null): Promise<{
   products: Omit<Product, "rowIndex">[];
   saleColumnCount: number;
   fetchedAt: string;
   source: "sheets-api" | "csv";
   hasApiKey: boolean;
+  years: string[];
 }> {
-  const ds = await getDataset();
+  const years = await resolveYears(yearsParam);
+  const datasets = await Promise.all(years.map((y) => getYearDataset(y)));
+
+  // Union products by SKU; prefer newest year's label/stock
+  const bySku = new Map<string, Omit<Product, "rowIndex">>();
+  let saleColumnCount = 0;
+  let source: "sheets-api" | "csv" = "csv";
+
+  for (const ds of datasets) {
+    saleColumnCount += ds.saleColumns.length;
+    if (ds.source === "sheets-api") source = "sheets-api";
+    for (const p of ds.products) {
+      if (!bySku.has(p.sku)) {
+        const { rowIndex: _r, ...rest } = p;
+        bySku.set(p.sku, rest);
+      }
+    }
+  }
+
   return {
-    products: ds.products.map(({ rowIndex: _r, ...p }) => p),
-    saleColumnCount: ds.saleColumns.length,
-    fetchedAt: ds.fetchedAt,
-    source: ds.source,
+    products: [...bySku.values()].sort((a, b) =>
+      a.sku.localeCompare(b.sku, "ru"),
+    ),
+    saleColumnCount,
+    fetchedAt: new Date().toISOString(),
+    source,
     hasApiKey: hasApiKey(),
+    years,
   };
 }
 
-export async function getAnalysis(query: string): Promise<ProductAnalysis | null> {
-  const ds = await getDataset();
-  const product = findProduct(ds.products, query);
-  if (!product) return null;
-  return analyzeProduct(ds.grid, ds.saleColumns, product);
+export async function getAnalysis(
+  query: string,
+  yearsParam: string[] | null = null,
+): Promise<ProductAnalysis | null> {
+  const years = await resolveYears(yearsParam);
+  const datasets = await Promise.all(years.map((y) => getYearDataset(y)));
+
+  const parts: ProductAnalysis[] = [];
+  for (const ds of datasets) {
+    const product = findProduct(ds.products, query);
+    if (!product) continue;
+    parts.push(analyzeProduct(ds.grid, ds.saleColumns, product));
+  }
+
+  return mergeAnalyses(parts);
 }
 
-export async function getTopPack25Rows(limit = 150): Promise<TopPackRow[]> {
-  const ds = await getDataset();
-  return topProductsByPack25(ds.grid, ds.saleColumns, ds.products, limit);
+export async function getTopPack25Rows(
+  limit = 150,
+  yearsParam: string[] | null = null,
+): Promise<TopPackRow[]> {
+  const years = await resolveYears(yearsParam);
+  const datasets = await Promise.all(years.map((y) => getYearDataset(y)));
+  const sets = datasets.map((ds) =>
+    topProductsByPack25(ds.grid, ds.saleColumns, ds.products, 10_000),
+  );
+  return mergeTopPackRows(sets, 25, limit);
 }
 
-export async function getTopPack50Rows(limit = 150): Promise<TopPackRow[]> {
-  const ds = await getDataset();
-  return topProductsByPack50(ds.grid, ds.saleColumns, ds.products, limit);
+export async function getTopPack50Rows(
+  limit = 150,
+  yearsParam: string[] | null = null,
+): Promise<TopPackRow[]> {
+  const years = await resolveYears(yearsParam);
+  const datasets = await Promise.all(years.map((y) => getYearDataset(y)));
+  const sets = datasets.map((ds) =>
+    topProductsByPack50(ds.grid, ds.saleColumns, ds.products, 10_000),
+  );
+  return mergeTopPackRows(sets, 50, limit);
 }

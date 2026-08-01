@@ -1,12 +1,15 @@
 import ExcelJS from "exceljs";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getTopPack50Rows } from "@/lib/sheets";
+import { parseYearsParam } from "@/lib/years";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const rows = await getTopPack50Rows(150);
+    const years = parseYearsParam(request.nextUrl.searchParams.get("years"));
+    const rows = await getTopPack50Rows(150, years);
+    const yearLabel = years?.length ? years.join("-") : "all";
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "analizer3000";
@@ -28,7 +31,7 @@ export async function GET() {
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
-    const filename = `top150-po50-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const filename = `top150-po50-${yearLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
     return new NextResponse(buffer, {
       status: 200,

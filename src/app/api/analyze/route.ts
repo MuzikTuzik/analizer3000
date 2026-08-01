@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAnalysis } from "@/lib/sheets";
+import { parseYearsParam } from "@/lib/years";
 
 export const dynamic = "force-dynamic";
 
@@ -11,9 +12,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const analysis = await getAnalysis(q);
+    const years = parseYearsParam(request.nextUrl.searchParams.get("years"));
+    const analysis = await getAnalysis(q, years);
     if (!analysis) {
-      return NextResponse.json({ error: "Позиция не найдена" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Позиция не найдена в выбранных годах" },
+        { status: 404 },
+      );
     }
     return NextResponse.json(analysis);
   } catch (error) {

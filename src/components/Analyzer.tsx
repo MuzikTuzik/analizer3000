@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { Product, ProductAnalysis } from "@/lib/types";
+import { yearsQuery } from "@/lib/years";
 
 type ProductsResponse = {
   products: Product[];
   saleColumnCount: number;
   fetchedAt: string;
+  years?: string[];
   error?: string;
 };
 
@@ -19,6 +21,8 @@ function formatOrderQuantities(orders: { quantity: number }[]) {
 }
 
 export function Analyzer() {
+  const [availableYears, setAvailableYears] = useState<string[]>([]);
+  const [selectedYears, setSelectedYears] = useState<string[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [saleColumnCount, setSaleColumnCount] = useState(0);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
@@ -30,11 +34,30 @@ export function Analyzer() {
   const [exporting, setExporting] = useState<"25" | "50" | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  async function loadProducts() {
+  const yearsParam = useMemo(() => yearsQuery(selectedYears), [selectedYears]);
+
+  async function loadYears() {
+    const res = await fetch("/api/years", { cache: "no-store" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Не удалось загрузить годы");
+    const years = (data.years as string[]) ?? [];
+    setAvailableYears(years);
+    setSelectedYears((prev) => {
+      if (!prev.length) return years; // default: all years
+      const keep = prev.filter((y) => years.includes(y));
+      return keep.length ? keep : years;
+    });
+    return years;
+  }
+
+  async function loadProducts(years: string[]) {
     setLoadingProducts(true);
     setError(null);
     try {
-      const res = await fetch("/api/products", { cache: "no-store" });
+      const qs = yearsQuery(years);
+      const res = await fetch(`/api/products${qs ? `?${qs}` : ""}`, {
+        cache: "no-store",
+      });
       const data = (await res.json()) as ProductsResponse;
       if (!res.ok) throw new Error(data.error || "Не удалось загрузить позиции");
       setProducts(data.products);
@@ -47,16 +70,23 @@ export function Analyzer() {
     }
   }
 
-  async function loadAnalysis(q: string) {
+  async function loadAnalysis(q: string, years: string[]) {
     if (!q) {
       setAnalysis(null);
       return;
     }
+    if (!years.length) {
+      setAnalysis(null);
+      setError("Выберите хотя бы один год");
+      return;
+    }
     setError(null);
     try {
-      const res = await fetch(`/api/analyze?q=${encodeURIComponent(q)}`, {
-        cache: "no-store",
-      });
+      const qs = yearsQuery(years);
+      const res = await fetch(
+        `/api/analyze?q=${encodeURIComponent(q)}${qs ? `&${qs}` : ""}`,
+        { cache: "no-store" },
+      );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Не удалось проанализировать");
       setAnalysis(data as ProductAnalysis);
@@ -67,7 +97,10 @@ export function Analyzer() {
   }
 
   useEffect(() => {
-    void loadProducts();
+    void loadYears().catch((e) => {
+      setError(e instanceof Error ? e.message : "Ошибка загрузки годов");
+      setLoadingProducts(false);
+    });
   }, []);
 
   const suggestions = useMemo(() => {
@@ -86,15 +119,45 @@ export function Analyzer() {
     setSelected(labelOrSku);
     setQuery(labelOrSku);
     startTransition(() => {
-      void loadAnalysis(labelOrSku);
+      void loadAnalysis(labelOrSku, selectedYears);
     });
   }
 
+  function toggleYear(year: string) {
+    setSelectedYears((prev) => {
+      if (prev.includes(year)) {
+        if (prev.length === 1) return prev; // keep at least one year
+        return prev.filter((y) => y !== year);
+      }
+      return [...prev, year].sort((a, b) => b.localeCompare(a));
+    });
+  }
+
+  function selectAllYears() {
+    setSelectedYears(availableYears);
+  }
+
+  useEffect(() => {
+    if (!availableYears.length || !selectedYears.length) return;
+    void loadProducts(selectedYears);
+    if (selected) {
+      startTransition(() => {
+        void loadAnalysis(selected, selectedYears);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when year selection changes
+  }, [selectedYears.join(",")]);
+
   async function refresh() {
     await fetch("/api/revalidate", { method: "POST" });
-    await loadProducts();
+    const years = await loadYears();
+    const active = selectedYears.length
+      ? selectedYears.filter((y) => years.includes(y))
+      : years;
+    setSelectedYears(active.length ? active : years);
+    await loadProducts(active.length ? active : years);
     if (selected) {
-      await loadAnalysis(selected);
+      await loadAnalysis(selected, active.length ? active : years);
     }
   }
 
@@ -102,7 +165,11 @@ export function Analyzer() {
     setExporting(kind);
     setError(null);
     try {
-      const res = await fetch(`/api/export/top${kind}`, { cache: "no-store" });
+      const qs = yearsParam;
+      const res = await fetch(
+        `/api/export/top${kind}${qs ? `?${qs}` : ""}`,
+        { cache: "no-store" },
+      );
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as {
           error?: string;
@@ -113,7 +180,10 @@ export function Analyzer() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `top150-po${kind}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const yearLabel = selectedYears.length
+        ? selectedYears.join("-")
+        : "all";
+      a.download = `top150-po${kind}-${yearLabel}-${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -135,7 +205,7 @@ export function Analyzer() {
           <button
             type="button"
             onClick={() => void exportTopExcel("25")}
-            disabled={exporting !== null || loadingProducts}
+            disabled={exporting !== null || loadingProducts || !selectedYears.length}
             className="shrink-0 rounded-lg border border-[var(--accent)] bg-white px-3.5 py-2 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-soft)] disabled:opacity-50"
           >
             {exporting === "25" ? "Создаём Excel…" : "Excel: топ 150 по 25"}
@@ -143,7 +213,7 @@ export function Analyzer() {
           <button
             type="button"
             onClick={() => void exportTopExcel("50")}
-            disabled={exporting !== null || loadingProducts}
+            disabled={exporting !== null || loadingProducts || !selectedYears.length}
             className="shrink-0 rounded-lg border border-[var(--accent)] bg-white px-3.5 py-2 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-soft)] disabled:opacity-50"
           >
             {exporting === "50" ? "Создаём Excel…" : "Excel: топ 150 по 50"}
@@ -157,6 +227,45 @@ export function Analyzer() {
           </button>
         </div>
       </header>
+
+      <section className="mb-4 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm text-[var(--muted)]">Годы</span>
+          <button
+            type="button"
+            onClick={selectAllYears}
+            className="text-sm text-[var(--accent)] hover:underline"
+          >
+            Выбрать все
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          {availableYears.map((year) => {
+            const checked = selectedYears.includes(year);
+            return (
+              <label
+                key={year}
+                className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition ${
+                  checked
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                    : "border-[var(--line)] bg-white"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleYear(year)}
+                  className="accent-[var(--accent)]"
+                />
+                {year}
+              </label>
+            );
+          })}
+          {!availableYears.length && (
+            <span className="text-sm text-[var(--muted)]">Загрузка годов…</span>
+          )}
+        </div>
+      </section>
 
       <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
         <label className="mb-2 block text-sm text-[var(--muted)]" htmlFor="product">
@@ -199,6 +308,8 @@ export function Analyzer() {
         </div>
 
         <p className="mt-3 font-mono text-xs text-[var(--muted)]">
+          Годы: {selectedYears.join(", ") || "—"}
+          {" · "}
           Позиций: {products.length}
           {saleColumnCount ? ` · заказов: ${saleColumnCount}` : ""}
           {fetchedAt

@@ -387,3 +387,124 @@ export function topProductsByPack50(
     )
     .slice(0, limit);
 }
+
+/** Merge analyses from several years (same SKU). Stock/label from newest part. */
+export function mergeAnalyses(parts: ProductAnalysis[]): ProductAnalysis | null {
+  if (!parts.length) return null;
+  if (parts.length === 1) return parts[0]!;
+
+  const newest = parts[0]!;
+  const byQuantity = new Map<number, PackStats>();
+  const clientMap = new Map<
+    string,
+    {
+      client: string;
+      orderCount: number;
+      totalQty: number;
+      byQuantity: Map<number, PackStats>;
+      orders: ClientBreakdown["orders"];
+    }
+  >();
+
+  let orderCount = 0;
+  let totalQty = 0;
+
+  for (const part of parts) {
+    orderCount += part.orderCount;
+    totalQty += part.totalQty;
+
+    for (const bucket of part.byQuantity) {
+      const cur = byQuantity.get(bucket.quantity) ?? {
+        orderCount: 0,
+        packCount: 0,
+      };
+      cur.orderCount += bucket.orderCount;
+      cur.packCount += bucket.packCount;
+      byQuantity.set(bucket.quantity, cur);
+    }
+
+    for (const client of part.clients) {
+      const key = `name:${client.client}`;
+      const existing = clientMap.get(key) ?? {
+        client: client.client,
+        orderCount: 0,
+        totalQty: 0,
+        byQuantity: new Map<number, PackStats>(),
+        orders: [],
+      };
+      existing.orderCount += client.orderCount;
+      existing.totalQty += client.totalQty;
+      for (const bucket of client.byQuantity) {
+        const cur = existing.byQuantity.get(bucket.quantity) ?? {
+          orderCount: 0,
+          packCount: 0,
+        };
+        cur.orderCount += bucket.orderCount;
+        cur.packCount += bucket.packCount;
+        existing.byQuantity.set(bucket.quantity, cur);
+      }
+      existing.orders.push(...client.orders);
+      clientMap.set(key, existing);
+    }
+  }
+
+  const clients: ClientBreakdown[] = [...clientMap.values()]
+    .map((data) => ({
+      client: data.client,
+      orderCount: data.orderCount,
+      totalQty: data.totalQty,
+      byQuantity: toBuckets(data.byQuantity),
+      orders: data.orders,
+    }))
+    .sort(
+      (a, b) => b.totalQty - a.totalQty || a.client.localeCompare(b.client, "ru"),
+    );
+
+  return {
+    product: newest.product,
+    orderCount,
+    clientCount: clients.length,
+    totalQty,
+    byQuantity: toBuckets(byQuantity),
+    clients,
+  };
+}
+
+export function mergeTopPackRows(
+  rowSets: TopPackRow[][],
+  sortBy: 25 | 50,
+  limit = 150,
+): TopPackRow[] {
+  const map = new Map<string, TopPackRow>();
+  for (const rows of rowSets) {
+    for (const row of rows) {
+      const cur = map.get(row.sku) ?? { sku: row.sku, pack25: 0, pack50: 0 };
+      cur.pack25 += row.pack25;
+      cur.pack50 += row.pack50;
+      map.set(row.sku, cur);
+    }
+  }
+
+  const all = [...map.values()];
+  if (sortBy === 25) {
+    return all
+      .filter((r) => r.pack25 > 0)
+      .sort(
+        (a, b) =>
+          b.pack25 - a.pack25 ||
+          b.pack50 - a.pack50 ||
+          a.sku.localeCompare(b.sku, "ru"),
+      )
+      .slice(0, limit);
+  }
+
+  return all
+    .filter((r) => r.pack50 > 0)
+    .sort(
+      (a, b) =>
+        b.pack50 - a.pack50 ||
+        b.pack25 - a.pack25 ||
+        a.sku.localeCompare(b.sku, "ru"),
+    )
+    .slice(0, limit);
+}
