@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { Product, ProductAnalysis } from "@/lib/types";
+import { APP_VERSION } from "@/lib/version";
 import { yearsQuery } from "@/lib/years";
 
 type ProductsResponse = {
   products: Product[];
   saleColumnCount: number;
-  fetchedAt: string;
   years?: string[];
   error?: string;
 };
@@ -25,7 +25,6 @@ export function Analyzer() {
   const [selectedYears, setSelectedYears] = useState<string[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [saleColumnCount, setSaleColumnCount] = useState(0);
-  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState("");
   const [analysis, setAnalysis] = useState<ProductAnalysis | null>(null);
@@ -62,7 +61,6 @@ export function Analyzer() {
       if (!res.ok) throw new Error(data.error || "Не удалось загрузить позиции");
       setProducts(data.products);
       setSaleColumnCount(data.saleColumnCount);
-      setFetchedAt(data.fetchedAt);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка загрузки");
     } finally {
@@ -312,9 +310,8 @@ export function Analyzer() {
           {" · "}
           Позиций: {products.length}
           {saleColumnCount ? ` · заказов: ${saleColumnCount}` : ""}
-          {fetchedAt
-            ? ` · ${new Date(fetchedAt).toLocaleString("ru-RU")}`
-            : ""}
+          {" · "}
+          {APP_VERSION}
         </p>
       </section>
 
