@@ -131,8 +131,17 @@ export function Analyzer() {
     });
   }
 
-  function selectAllYears() {
-    setSelectedYears(availableYears);
+  const allYearsSelected =
+    availableYears.length > 0 &&
+    availableYears.every((y) => selectedYears.includes(y));
+
+  function toggleAllYears() {
+    if (allYearsSelected) {
+      // keep newest year if unchecking "all"
+      setSelectedYears(availableYears.slice(0, 1));
+    } else {
+      setSelectedYears(availableYears);
+    }
   }
 
   useEffect(() => {
@@ -227,17 +236,24 @@ export function Analyzer() {
       </header>
 
       <section className="mb-4 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-sm text-[var(--muted)]">Годы</span>
-          <button
-            type="button"
-            onClick={selectAllYears}
-            className="text-sm text-[var(--accent)] hover:underline"
-          >
-            Выбрать все
-          </button>
-        </div>
+        <div className="mb-2 text-sm text-[var(--muted)]">Года</div>
         <div className="flex flex-wrap gap-3">
+          <label
+            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition ${
+              allYearsSelected
+                ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                : "border-[var(--line)] bg-white"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={allYearsSelected}
+              onChange={toggleAllYears}
+              disabled={!availableYears.length}
+              className="accent-[var(--accent)]"
+            />
+            Все года
+          </label>
           {availableYears.map((year) => {
             const checked = selectedYears.includes(year);
             return (
@@ -306,7 +322,7 @@ export function Analyzer() {
         </div>
 
         <p className="mt-3 font-mono text-xs text-[var(--muted)]">
-          Годы: {selectedYears.join(", ") || "—"}
+          Года: {selectedYears.join(", ") || "—"}
           {" · "}
           Позиций: {products.length}
           {saleColumnCount ? ` · заказов: ${saleColumnCount}` : ""}
