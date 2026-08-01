@@ -7,6 +7,7 @@ import { yearsQuery } from "@/lib/years";
 
 type ProductsResponse = {
   products: Product[];
+  saleColumnCount: number;
   years?: string[];
   error?: string;
 };
@@ -23,6 +24,7 @@ export function Analyzer() {
   const [availableYears, setAvailableYears] = useState<string[]>([]);
   const [selectedYears, setSelectedYears] = useState<string[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [saleColumnCount, setSaleColumnCount] = useState(0);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState("");
   const [analysis, setAnalysis] = useState<ProductAnalysis | null>(null);
@@ -65,6 +67,7 @@ export function Analyzer() {
       const data = (await res.json()) as ProductsResponse;
       if (!res.ok) throw new Error(data.error || "Не удалось загрузить позиции");
       setProducts(data.products);
+      setSaleColumnCount(data.saleColumnCount ?? 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка загрузки");
     } finally {
@@ -343,7 +346,7 @@ export function Analyzer() {
           Года: {selectedYears.join(", ") || "—"}
           {" · "}
           Позиций: {products.length}
-          {analysis ? ` · Заказов: ${analysis.orderCount}` : ""}
+          {analysis ? ` · Заказов: ${saleColumnCount}` : ""}
           {" · "}
           {APP_VERSION}
         </p>
