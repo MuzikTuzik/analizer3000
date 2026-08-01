@@ -42,6 +42,15 @@ export function Analyzer() {
     return Math.min(5000, Math.max(1, Math.floor(n)));
   }, [topLimit]);
 
+  /** Stock is meaningful only for a single selected year 2026. */
+  const stockLabel = useMemo(() => {
+    const only2026 =
+      selectedYears.length === 1 && selectedYears[0] === "2026";
+    if (!only2026) return "динозавр";
+    if (analysis?.product.stock != null) return String(analysis.product.stock);
+    return "—";
+  }, [selectedYears, analysis]);
+
   async function loadYears() {
     const res = await fetch("/api/years", { cache: "no-store" });
     const data = await res.json();
@@ -372,9 +381,7 @@ export function Analyzer() {
                 </h2>
                 <p className="mt-1 text-sm text-[var(--muted)]">
                   {analysis.product.sku}
-                  {analysis.product.stock != null
-                    ? ` · остаток ${analysis.product.stock}`
-                    : ""}
+                  {` · остаток ${stockLabel}`}
                 </p>
               </div>
 
@@ -394,14 +401,7 @@ export function Analyzer() {
                   </div>
                 </div>
                 <Metric label="Продано" value={String(analysis.totalQty)} />
-                <Metric
-                  label="Остаток"
-                  value={
-                    analysis.product.stock != null
-                      ? String(analysis.product.stock)
-                      : "—"
-                  }
-                />
+                <Metric label="Остаток" value={stockLabel} />
               </div>
 
               <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
