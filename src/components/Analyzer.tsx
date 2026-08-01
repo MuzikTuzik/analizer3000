@@ -214,42 +214,42 @@ export function Analyzer() {
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <header className="mb-6 flex flex-col gap-4">
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
           Анализатор продаж крепежа
         </h1>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1.5 text-sm text-[var(--muted)]">
-            Топ
+          <label className="flex shrink-0 items-center gap-2 text-sm text-[var(--muted)]">
+            <span>Топ</span>
             <input
               type="number"
               min={1}
               max={5000}
               value={topLimit}
               onChange={(e) => setTopLimit(e.target.value)}
-              className="w-20 rounded-lg border border-[var(--line)] bg-white px-2 py-1.5 font-mono text-sm text-[var(--ink)] outline-none ring-[var(--accent)] focus:ring-2"
+              className="w-[4.5rem] shrink-0 rounded-lg border border-[var(--line)] bg-white px-2 py-2 font-mono text-sm tabular-nums text-[var(--ink)] outline-none ring-[var(--accent)] focus:ring-2"
             />
           </label>
           <button
             type="button"
             onClick={() => void exportTopExcel("25")}
             disabled={exporting !== null || loadingProducts || !selectedYears.length}
-            className="shrink-0 rounded-lg border border-[var(--accent)] bg-white px-3.5 py-2 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-soft)] disabled:opacity-50"
+            className="w-[9.5rem] shrink-0 rounded-lg border border-[var(--accent)] bg-white px-3 py-2 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-soft)] disabled:opacity-50"
           >
-            {exporting === "25" ? "Создаём Excel…" : `Excel: топ ${topLimitNum} по 25`}
+            {exporting === "25" ? "Создаём…" : "Excel по 25"}
           </button>
           <button
             type="button"
             onClick={() => void exportTopExcel("50")}
             disabled={exporting !== null || loadingProducts || !selectedYears.length}
-            className="shrink-0 rounded-lg border border-[var(--accent)] bg-white px-3.5 py-2 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-soft)] disabled:opacity-50"
+            className="w-[9.5rem] shrink-0 rounded-lg border border-[var(--accent)] bg-white px-3 py-2 text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-soft)] disabled:opacity-50"
           >
-            {exporting === "50" ? "Создаём Excel…" : `Excel: топ ${topLimitNum} по 50`}
+            {exporting === "50" ? "Создаём…" : "Excel по 50"}
           </button>
           <button
             type="button"
             onClick={() => void refresh()}
-            className="shrink-0 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-medium text-white transition hover:opacity-90"
+            className="w-[7rem] shrink-0 rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white transition hover:opacity-90"
           >
             Обновить
           </button>
