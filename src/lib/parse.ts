@@ -1,3 +1,8 @@
+import {
+  clientMatchKey,
+  formatClientName,
+  preferClientName,
+} from "./clients";
 import type {
   ClientBreakdown,
   Product,
@@ -264,16 +269,24 @@ export function analyzeProduct(
 
     // Named buyers aggregate; anonymous order columns stay separate
     const isAnonymous = col.client.startsWith("Не указан");
-    const key = isAnonymous ? `col:${col.colIndex}` : `name:${col.client}`;
+    const displayClient = isAnonymous
+      ? col.client
+      : formatClientName(col.client);
+    const key = isAnonymous
+      ? `col:${col.colIndex}`
+      : `name:${clientMatchKey(col.client)}`;
 
     const existing = clientMap.get(key) ?? {
-      client: col.client,
+      client: displayClient,
       orderCount: 0,
       totalQty: 0,
       byQuantity: new Map<number, PackStats>(),
       orders: [],
     };
 
+    if (!isAnonymous) {
+      existing.client = preferClientName(existing.client, displayClient);
+    }
     existing.orderCount += 1;
     existing.totalQty += qty;
     applyPackParts(existing.byQuantity, parts);
@@ -424,14 +437,22 @@ export function mergeAnalyses(parts: ProductAnalysis[]): ProductAnalysis | null 
     }
 
     for (const client of part.clients) {
-      const key = `name:${client.client}`;
+      const isAnonymous = client.client.startsWith("Не указан");
+      const key = isAnonymous
+        ? `anon:${client.client}`
+        : `name:${clientMatchKey(client.client)}`;
       const existing = clientMap.get(key) ?? {
-        client: client.client,
+        client: isAnonymous
+          ? client.client
+          : formatClientName(client.client),
         orderCount: 0,
         totalQty: 0,
         byQuantity: new Map<number, PackStats>(),
         orders: [],
       };
+      if (!isAnonymous) {
+        existing.client = preferClientName(existing.client, client.client);
+      }
       existing.orderCount += client.orderCount;
       existing.totalQty += client.totalQty;
       for (const bucket of client.byQuantity) {
